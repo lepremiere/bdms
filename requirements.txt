@@ -1,0 +1,7 @@
+numpy
+pandas
+tqdm
+polars[numpy,pandas,pyarrow]
+matplotlib
+python-binance
+python-dotenv
