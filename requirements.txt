@@ -1,0 +1,6 @@
+numpy
+pyarrow
+polars[numpy,pandas,pyarrow]
+tqdm
+matplotlib
+python-binance
