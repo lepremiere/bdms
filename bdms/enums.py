@@ -30,6 +30,7 @@ MONTHLY_FUTURES_TYPES = [
     "aggTrades", "bookTicker", "fundingRate", "indexPriceKlines",
     "klines", "markPriceKlines", "premiumIndexKlines", "trades"
 ]
+FUTURE_TYPES = DAILY_FUTURES_TYPES + MONTHLY_FUTURES_TYPES
 MARKET_DATA_TYPES = set(
     SPOT_TYPES + DAILY_FUTURES_TYPES + MONTHLY_FUTURES_TYPES
 )

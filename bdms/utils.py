@@ -1,4 +1,4 @@
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import zipfile
 import polars as pl
@@ -41,8 +41,8 @@ def get_base_path(
     """   
     assert time_period in TIME_PERIODS
     assert trading_type in TRADING_TYPES
-    assert market_data_type in TYPES_MAP[trading_type][time_period], \
-        f"{market_data_type} invalid for {trading_type} and {time_period}."
+    assert market_data_type in TYPES_MAP[trading_type]["monthly"] + \
+        TYPES_MAP[trading_type]["daily"]
     
     if "klines" in market_data_type.lower():
         assert interval is not None, "Interval must be specified for klines."
@@ -168,9 +168,15 @@ def load_csv_from_zip(path: str) -> pl.DataFrame:
         if not csv_file:
             raise FileNotFoundError("No CSV file found in the ZIP archive.")
         
+        # Determine if CSV file has header by looking at first row
+        with zip_ref.open(csv_file) as file:
+            first_row = pl.read_csv(file, has_header=False, n_rows=1)
+            has_header = first_row.dtypes[0] == pl.datatypes.String
+            
         # Open the CSV file in the archive and load it into a DataFrame
         with zip_ref.open(csv_file) as file:
-            df = pl.read_csv(file, has_header=False)
+            # Load the CSV file into a DataFrame
+            df = pl.read_csv(file, has_header=has_header)
         
     # Close the ZIP file
     zip_ref.close()
@@ -448,6 +454,57 @@ def split_date_range(
 
     return monthly_dates, daily_dates
 
+
+def intersect_dates(
+        monthly_dates: List[datetime.date], 
+        daily_dates: List[datetime.date]
+    ) -> Dict[str, List[datetime.date]]:
+    """
+    Filters the daily dates to exclude any dates that are within months covered
+    by the monthly dates. The results are sorted and returned.
+    
+    Parameters:
+    ----------
+    monthly_dates: List[datetime.date]
+        List of monthly dates.
+    daily_dates: List[datetime.date]
+        List of daily dates.
+        
+    Returns:
+    -------
+    Dict[str, List[datetime.date]]:
+        Dictionary containing the filtered monthly and daily dates.
+    """
+    # Get the set of months in the monthly dates
+    monthly_months = set([date.strftime("%Y-%m") for date in monthly_dates])
+
+    # Filter all days that are prior to the first monthly date
+    _daily_dates = daily_dates
+    if len(monthly_dates):
+        _daily_dates = [
+            date for date in daily_dates if date >= monthly_dates[0]
+        ]
+    
+    # Warn in case there were daily dates before the first monthly date
+    if len(_daily_dates) != len(daily_dates):
+        warnings.warn(
+            f"Daily data before the first monthly date. Removing these dates."
+        )
+    
+    # Filter daily dates to exclude any dates within months covered by 
+    # monthly_dates
+    filtered_daily_dates = [
+        date for date in _daily_dates 
+        if date.strftime("%Y-%m") not in monthly_months
+    ]
+
+    continuous_dates = {
+        "monthly": monthly_dates, 
+        "daily": filtered_daily_dates
+    }
+    return continuous_dates
+
+
 def get_valid_combinations(
     trading_types: List[str], 
     market_data_types: List[str],
@@ -471,6 +528,9 @@ def get_valid_combinations(
         "Invalid trading type. Choose from spot, um, cm."
     assert all(t in MARKET_DATA_TYPES for t in market_data_types), \
         "Invalid market data type."
+    assert (("um" not in trading_types) or ("cm" not in trading_types)) or \
+        any(t in FUTURE_TYPES for t in market_data_types), \
+        "Futures data requires um or cm trading type."
         
     spot_combinations = []
     if "spot" in trading_types:
