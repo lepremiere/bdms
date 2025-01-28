@@ -6,6 +6,7 @@ import json
 import warnings
 import urllib.request
 import urllib.error
+import polars as pl
 from tqdm import tqdm
 from datetime import datetime
 from multiprocessing import Pool, cpu_count
@@ -41,6 +42,10 @@ def download_and_process_file(
         df = load_csv_from_zip(zip_path)
         df.columns = cols
         
+        # Set all ignore values to 0 for compatibility
+        if "ignore" in df.columns:
+            df = df.with_columns(pl.lit(0).alias("ignore"))
+
         if storage_format == "parquet":
             df.write_parquet(file_path)
         else:
@@ -123,9 +128,7 @@ def populate_database(
     start_date_provided = start_date is not None
 
     # Get valid combinations of trading types and market data types
-    combinations = get_valid_combinations(
-        trading_types, market_data_types
-    )
+    combinations = get_valid_combinations(trading_types, market_data_types)
 
     jobs = []
     # Iterate over the combinations
@@ -218,10 +221,15 @@ def populate_database(
                     # Add the job to the list
                     jobs.append((url, zip_path, file_path, cols))
     
+    # Check if there are any jobs
+    if not jobs:
+        warnings.warn("No valid combinations found.")
+        return
+    
     # Run the jobs in parallel
     pbar = tqdm(total=len(jobs), desc="Downloading data", smoothing=0)
     n_jobs = min(cpu_count(), len(jobs)) if n_jobs == -1 else n_jobs
-    pool = Pool(n_jobs, maxtasksperchild=10)
+    pool = Pool(n_jobs, maxtasksperchild=1)
     for job in jobs:
         pool.apply_async(
             download_and_process_file, args=job, 
