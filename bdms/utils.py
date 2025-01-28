@@ -1,6 +1,5 @@
 from typing import List, Tuple
 
-import sys
 import zipfile
 import polars as pl
 import urllib.request
@@ -8,11 +7,7 @@ import warnings
 from itertools import product
 from datetime import datetime, timedelta
 
-from bdms.enums import (
-    TRADING_TYPES, MARKET_DATA_TYPES, FUTURES_DATA_TYPES,
-    TIME_PERIODS, INTERVALS,
-    SPOT_COLUMNS_MAP, FUTURES_COLUMNS_MAP
-)
+from bdms.enums import *
 
 
 def get_base_path(
@@ -46,15 +41,13 @@ def get_base_path(
     """   
     assert time_period in TIME_PERIODS
     assert trading_type in TRADING_TYPES
-    if trading_type != "spot":
-        assert market_data_type in FUTURES_DATA_TYPES + MARKET_DATA_TYPES
-    else:
-        assert market_data_type in MARKET_DATA_TYPES
+    assert market_data_type in TYPES_MAP[trading_type][time_period], \
+        f"{market_data_type} invalid for {trading_type} and {time_period}."
     
     if "klines" in market_data_type.lower():
         assert interval is not None, "Interval must be specified for klines."
-        assert interval in INTERVALS, \
-            "Invalid interval. Choose from enum.INTERVALS."
+        assert interval in INTERVALS_MAP[time_period], \
+            "Invalid interval. Choose from enum.INTERVALS_MAP."
     else:
         assert interval is None, "Interval must be None for non-klines data."
         
@@ -108,85 +101,6 @@ def get_file_basename(
         file_name = f"{symbol}-{market_data_type}-{date}"
         
     return file_name
-
-
-def get_valid_combinations(
-        symbols: List[str],
-        trading_types: List[str],
-        market_data_types: List[str],
-        intervals: List[str] = None,
-    ) -> List[Tuple[str, str, str]]:
-    """
-    Get the valid combinations of trading types, market data types, and 
-    intervals for each symbol.
-    
-    Parameters:
-    ----------
-    trading_types: List[str]
-        Trading types (spot, um, cm).
-    market_data_types: List[str]
-        Market data types. Can be (trades, aggTrades, klines) for all trading
-        types, and additionally (bookTicker, fundingRate, indexPriceKlines,
-        markPriceKlines, premiumIndexKlines) for um and cm.
-    intervals: List[str]
-        Kline intervals. Default is None. Required if market_data_type is
-        klines, else ignored. See enums.INTERVALS.
-        
-    Returns:
-    -------
-    combinations: List[Tuple[str, str, str]]
-        List of valid combinations of trading types, market data types, and
-        intervals.
-    """
-    assert intervals is None or all(i in INTERVALS for i in intervals), \
-        "Invalid interval. Choose from enums.INTERVAL"
-    assert all(t in TRADING_TYPES for t in trading_types), \
-        "Invalid trading type. Choose from spot, um, cm."
-    if any(t in FUTURES_DATA_TYPES for t in market_data_types):
-        assert any(t in trading_types for t in ["um", "cm"]), \
-            "Futures market data types are only available for um and cm."
-    if "spot" in trading_types:
-        assert any(t in MARKET_DATA_TYPES for t in market_data_types), \
-            "Found no valid market data type for spot."
-    if intervals is None:
-        assert not any("klines" in t.lower() for t in market_data_types), \
-            "Intervals must be specified for klines data."
-    if intervals == ["1s"]:
-        assert any(t in MARKET_DATA_TYPES for t in market_data_types), \
-            "1s intervals not available for selected futures market data types."
-    
-    combinations = []
-    trading_types = trading_types.copy()
-
-    # Get all valid combinations for spot trading type
-    if "spot" in trading_types:
-        spot_data_types = [
-            t for t in market_data_types if t in MARKET_DATA_TYPES
-        ]
-        trading_types.remove("spot")
-        for symbol, data_type in product(symbols, spot_data_types):
-            if "klines" not in data_type.lower():
-                combinations.append((symbol, "spot", data_type, None))
-            else:
-                for interval in intervals:
-                    combinations.append(
-                        (symbol, "spot", data_type, interval)
-                    )
-                    
-    # Get all valid combinations for futures trading types
-    for symbol, trading_type in product(symbols, trading_types):
-        for data_type in market_data_types:
-            if "klines" not in data_type.lower():
-                combinations.append((symbol, trading_type, data_type, None))
-            else:
-                for interval in intervals:
-                    if interval == "1s" and data_type in FUTURES_DATA_TYPES:
-                        continue
-                    combinations.append(
-                        (symbol, trading_type, data_type, interval)
-                    )
-        
-    return combinations
         
 
 def download_file(url: str, path: str) -> bool:
@@ -326,29 +240,6 @@ def get_last_trade_id(filepath: str) -> int:
     
     return last_id
 
-    
-def get_cols(trading_type: str, market_data_type: str) -> List[str]:
-    """
-    Get the columns for the specified trading type and market data type.
-    
-    Parameters:
-    ----------
-    trading_type: str
-        Trading type (spot, um, cm).
-    market_data_type: str
-        Market data type (trades, aggTrades, klines).
-        
-    Returns:
-    -------
-    cols: List[str]
-        List of column names.
-    """
-    if trading_type != "spot":
-        cols = FUTURES_COLUMNS_MAP[market_data_type]
-    else:
-        cols = SPOT_COLUMNS_MAP[market_data_type]
-    return cols
-
 
 def extract_dates_from_filenames(
         filenames: List[str], 
@@ -427,6 +318,96 @@ def check_date_range(
     return None
 
 
+def generate_daily_date_range(
+        start_date: str,
+        end_date: str,
+        include_end_date: bool = False
+    ) -> List[datetime.date]:
+    """
+    Generate a list of daily dates between the start and end dates.
+
+    Parameters:
+    ----------
+    start_date: str
+        Start date in the format "YYYY-MM-DD".
+    end_date: str
+        End date in the format "YYYY-MM-DD".
+    include_end_date: bool
+        Whether to include the end date in the date range. Default is False.
+        
+    Returns:
+    -------
+    dates: List[datetime.date]
+        List of daily dates in the format.
+    """
+    # Convert the start and end dates to datetime objects
+    start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+    
+    if start_date > end_date:
+        raise ValueError("start_date must be earlier than or equal to end_date")
+    
+    # Generate the daily dates
+    dates = []
+    current_date = start_date
+    while current_date < end_date:
+        dates.append(current_date)
+        current_date += timedelta(days=1)
+        
+    if include_end_date:
+        dates.append(current_date)
+        
+    # Verify the date range
+    check_date_range(dates, mode="daily")
+    
+    return dates
+
+
+def generate_monthly_date_range(
+        start_date: str,
+        end_date: str,
+        include_end_date: bool = False
+    ) -> List[datetime.date]:
+    """
+    Generate a list of monthly dates between the start and end dates.
+    
+    Parameters:
+    ----------
+    start_date: str
+        Start date in the format "YYYY-MM-DD".
+    end_date: str
+        End date in the format "YYYY-MM-DD".
+    include_end_date: bool
+        Whether to include the end date in the date range. Default is False.
+        
+    Returns:
+    -------
+    dates: List[datetime.date]
+        List of monthly dates in the format.
+    """
+    # Convert the start and end dates to datetime objects
+    start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+    end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+    
+    if start_date > end_date:
+        raise ValueError("start_date must be earlier than or equal to end_date")
+    
+    # Generate the monthly dates
+    dates = []
+    current_date = start_date.replace(day=1)
+    while current_date < end_date.replace(day=1):
+        dates.append(current_date)
+        current_date = (current_date + timedelta(days=32)).replace(day=1)
+        
+    if include_end_date:
+        dates.append(current_date)
+        
+    # Verify the date range 
+    check_date_range(dates, mode="monthly")
+    
+    return dates
+
+
 def split_date_range(
         start_date: str, 
         end_date: str
@@ -452,42 +433,65 @@ def split_date_range(
     daily_dates: List[datetime.date]
         List of daily dates in the format.
     """
-    # Convert the start and end dates to datetime objects
-    start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
-    end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+    # Generate monthly dates
+    monthly_dates = generate_monthly_date_range(start_date, end_date, True)
     
-    if start_date > end_date:
-        raise ValueError("start_date must be earlier than or equal to end_date")
+    # Set the start date to the first day of the last month
+    start_date = monthly_dates[-1].strftime("%Y-%m-%d")
     
-    # Get the monthly dates until the end date
-    # Initialize the monthly and daily date lists
-    monthly_dates = []
-    daily_dates = []
-
-    # Start at the beginning of the first month
-    current_date = start_date.replace(day=1)
-
-    # Add all full months
-    while current_date < end_date.replace(day=1):
-        monthly_dates.append(current_date)
-        current_date = (current_date + timedelta(days=32)).replace(day=1)
-
-    # Reset the current date if there are no monthly dates. This indicates that
-    # the date range is less than a month.
-    if not monthly_dates:
-        current_date = start_date
-        
-    # Add remaining daily dates
-    while current_date < end_date:
-        daily_dates.append(current_date)
-        current_date += timedelta(days=1)
-
-    # Verify the date ranges
-    check_date_range(monthly_dates, mode="monthly")
-    check_date_range(daily_dates, mode="daily")
+    # Pop the last month to exclude the end date if it is the first day of 
+    # the month
+    monthly_dates.pop()
     
+    # Generate daily dates
+    daily_dates = generate_daily_date_range(start_date, end_date, False)
+
     return monthly_dates, daily_dates
 
+def get_valid_combinations(
+    trading_types: List[str], 
+    market_data_types: List[str],
+    ) -> List[Tuple[str, str]]:
+    """
+    Get valid combinations of trading types and market data types.
+    
+    Parameters:
+    ----------
+    trading_types: List[str]
+        List of trading types (spot, um, cm).
+    market_data_types: List[str]
+        List of market data types.
+        
+    Returns:
+    -------
+    valid_combinations: List[Tuple[str, str]]
+        List of valid combinations of trading types and market data types.
+    """
+    assert all(t in TRADING_TYPES for t in trading_types), \
+        "Invalid trading type. Choose from spot, um, cm."
+    assert all(t in MARKET_DATA_TYPES for t in market_data_types), \
+        "Invalid market data type."
+        
+    spot_combinations = []
+    if "spot" in trading_types:
+        valid_data_types = list(set(market_data_types).intersection(SPOT_TYPES))
+        spot_combinations = list(product(["spot"], valid_data_types))
+        
+    um_combinations = []
+    if "um" in trading_types:
+        valid_data_types = list(set(market_data_types).intersection(
+            set(DAILY_FUTURES_TYPES + MONTHLY_FUTURES_TYPES)
+        ))
+        um_combinations = list(product(["um"], valid_data_types))
+        
+    cm_combinations = []
+    if "cm" in trading_types:
+        valid_data_types = list(set(market_data_types).intersection(
+            set(MONTHLY_FUTURES_TYPES + DAILY_FUTURES_TYPES)
+        ))
+        cm_combinations = list(product(["cm"], valid_data_types))
+        
+    return spot_combinations + um_combinations + cm_combinations
 
 if __name__ == "__main__":
     pass

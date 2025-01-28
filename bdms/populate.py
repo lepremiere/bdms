@@ -6,16 +6,18 @@ import json
 import warnings
 import urllib.request
 import urllib.error
-import warnings
 from tqdm import tqdm
+from datetime import datetime
 from multiprocessing import Pool, cpu_count
 
-from bdms.enums import *
+from bdms.enums import (
+    TYPES_MAP, START_DATE_MAP, END_DATE, INTERVALS_MAP,
+    BASE_URL, SPOT_COLUMNS_MAP, FUTURES_COLUMNS_MAP
+)
 from bdms.utils import (
-    get_base_path, get_file_basename, 
-    split_date_range, get_valid_combinations,
-    download_file, load_csv_from_zip, get_cols,
-    
+    get_base_path, get_file_basename, get_valid_combinations,
+    generate_daily_date_range, generate_monthly_date_range, 
+    split_date_range,  download_file, load_csv_from_zip
 )
 
 
@@ -29,7 +31,8 @@ def download_and_process_file(
     storage_format = file_path.split(".")[-1].lower()
     
     # Download the file 
-    if not download_file(url, path=zip_path):
+    success = download_file(url, zip_path)
+    if not success: 
         return
     
     # Store data in different format if not zip via Thread
@@ -65,7 +68,11 @@ def populate_database(
     database https://data.binance.vision/. It creates a directory structure
     similar to the database structure. The data will automatically be downloaded
     from the monthly endpoint for the bulk of the data, and the daily endpoint
-    for the remaining data that the specified date range covers.
+    for the remaining data that the specified date range covers, if available.
+    
+    Note: The available dates are not easy to determine, so it will be tried to
+    download the data for the specified date range. If the data is not available
+    for the specified date range, the function will return a warning.
     
     WARNING: Depending on selected data you might need a lot of disk space.
      
@@ -99,61 +106,122 @@ def populate_database(
     n_jobs: int
         Number of parallel jobs to run. Default is -1, which uses all available
         CPUs.
+        
+    Raises:
+    -------
+        ValueError: 
+            If the storage format is invalid.
+        ValueError: 
+            If the interval is not provided for klines.
+        Warning:
+            If the file is not found in the database.
     """        
     assert storage_format in ["zip", "csv", "parquet"], \
         "Invalid storage format. Choose from zip, csv, parquet."
             
     # Check if the start date is provided
     start_date_provided = start_date is not None
-    
-    # Get all the combinations 
+
+    # Get valid combinations of trading types and market data types
     combinations = get_valid_combinations(
-        symbols, trading_types, market_data_types, intervals
+        trading_types, market_data_types
     )
 
     jobs = []
     # Iterate over the combinations
-    for symbol, trading_type, market_data_type, interval in combinations:
-        if not start_date_provided:
-            start_date = START_DATE_MAP[trading_type]
+    for trading_type, market_data_type in combinations:
+               
+        # Get the start date and check if the start date is valid
+        _start_date = datetime.strptime(
+            START_DATE_MAP[trading_type][market_data_type], "%Y-%m-%d"
+        ).date()
+        if start_date_provided:
+            provided_start_date = datetime.strptime(
+                start_date, "%Y-%m-%d"
+            ).date()
+            if provided_start_date < _start_date:
+                warnings.warn(
+                    f"({trading_type}: {market_data_type}) only available "
+                    f"from {_start_date}. Setting start date to {_start_date}."
+                )
+                start_date = str(_start_date)
+        else:
+            start_date = str(_start_date)
         
-        # Split date range into monthly and daily periods
-        monthly_dates, daily_dates = split_date_range(start_date, end_date)
-
+        # Determine if data can be drawn from daily and monthly endpoints
+        has_daily = market_data_type in TYPES_MAP[trading_type]["daily"]
+        has_monthly = market_data_type in TYPES_MAP[trading_type]["monthly"]
+        
+        # Generate the date ranges 
+        monthly_dates, daily_dates = [], []
+        if has_daily and has_monthly:
+            monthly_dates, daily_dates = split_date_range(start_date, end_date)
+        elif has_daily:
+            daily_dates = generate_daily_date_range(start_date, end_date)
+        elif has_monthly:
+            monthly_dates = generate_monthly_date_range(start_date, end_date)
+        
         # Iterate over the dates
-        for date in monthly_dates + daily_dates:
-            time_period = "monthly" if date in monthly_dates else "daily"
+        n_monthly = len(monthly_dates)
+        for i, date in enumerate(monthly_dates + daily_dates):
+            time_period = "monthly" if i < n_monthly else "daily"
             
-            # Get the base path and create the save path
-            base_path = get_base_path(
-                trading_type, market_data_type, time_period, symbol, interval
-            )
-            save_path = os.path.join(root_dir, base_path)
-            os.makedirs(save_path, exist_ok=True)
-            
-            # Define the zip and csv file path
-            basename = get_file_basename(
-                symbol, market_data_type, date, time_period, interval
-            )
-            zip_path = f"{save_path}{basename}.zip"
-            file_path = f"{save_path}{basename}.{storage_format}"
-            
-            # Skip if the file in target format already exists
-            if os.path.exists(file_path):
-                warnings.warn(f"File already exists: {file_path}")
-                continue
+            # Iterate over the symbols
+            for symbol in symbols:
                 
-            # Define the URL and columns
-            url = f"{BASE_URL}{base_path}{basename}.zip"
-            cols = get_cols(trading_type, market_data_type)
-            
-            # Add the job to the list
-            jobs.append((url, zip_path, file_path, cols))
+                # Determine the intervals
+                if "klines" not in market_data_type.lower():
+                    _intervals = [None]
+                elif intervals is not None:
+                    _intervals = intervals.copy()
+                else:
+                    raise ValueError("Intervals must be provided for klines.")
+                    
+                # Iterate over the intervals
+                for interval in _intervals:
+                    # Skip if the interval is not valid
+                    if interval is not None:
+                        if interval not in INTERVALS_MAP[time_period]:
+                            continue
+                    if interval == "1s" and trading_type != "spot":
+                        continue
+                    
+                    # Get the base path and create the save path
+                    base_path = get_base_path(
+                        trading_type, market_data_type, 
+                        time_period, symbol, interval
+                    )
+                    save_path = os.path.join(root_dir, base_path)
+                    os.makedirs(save_path, exist_ok=True)
+                    
+                    # Define the zip and csv file path
+                    basename = get_file_basename(
+                        symbol, market_data_type, str(date), 
+                        time_period, interval
+                    )
+                    zip_path = f"{save_path}{basename}.zip"
+                    file_path = f"{save_path}{basename}.{storage_format}"
+                    
+                    # Skip if the file in target format already exists
+                    if os.path.exists(file_path):
+                        continue
+                        
+                    # Get the column names for this market data type
+                    if trading_type != "spot":
+                        cols = FUTURES_COLUMNS_MAP[market_data_type]
+                    else:
+                        cols = SPOT_COLUMNS_MAP[market_data_type]
+                    
+                    # Define the URL 
+                    url = f"{BASE_URL}{base_path}{basename}.zip"
+                    
+                    # Add the job to the list
+                    jobs.append((url, zip_path, file_path, cols))
     
     # Run the jobs in parallel
     pbar = tqdm(total=len(jobs), desc="Downloading data", smoothing=0)
     n_jobs = min(cpu_count(), len(jobs)) if n_jobs == -1 else n_jobs
-    pool = Pool(n_jobs, maxtasksperchild=1)
+    pool = Pool(n_jobs, maxtasksperchild=10)
     for job in jobs:
         pool.apply_async(
             download_and_process_file, args=job, 
@@ -199,6 +267,6 @@ def get_all_symbols(type: str) -> List[str]:
     
     return symbols
 
+    
 if __name__ == "__main__":
     pass
-    
