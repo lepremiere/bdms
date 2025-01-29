@@ -1,4 +1,5 @@
 import os
+import warnings
 import polars as pl
 import pyarrow.parquet as pq
 from datetime import datetime
@@ -9,6 +10,7 @@ from bdms.utils import get_last_trade_id
 def update_aggTrades(
         api_key: str, 
         api_secret: str, 
+        symbol: str,
         path: str,
         write_invterval: int=1000,
         client_kwargs: dict={},
@@ -22,6 +24,8 @@ def update_aggTrades(
         Binance API key.
     api_secret: str
         Binance API secret.
+    symbol: str
+        Trading pair symbol.
     path: str
         Path where the file is saved.
     write_interval: int
@@ -36,14 +40,12 @@ def update_aggTrades(
     else:
         raise ValueError(f"File does not exist: {path}")
     
-    # Get the symbol and file type from the file name
-    symbol, file_type = os.path.basename(path).split(".")
-    print(f"Symbol: {symbol}, File type: {file_type}")
+    # Get file type from the file name
+    file_type = os.path.basename(path).split(".")[-1]
     
     # Initialize the Binance client
     client = Client(api_key, api_secret, **client_kwargs)
         
-
     num_fetched = 0
     try:
         # Fetch aggregate trades from the Binance API
@@ -82,7 +84,8 @@ def update_aggTrades(
                         )
                         with writer:
                             writer.write_table(arrow_table)
-                                
+                        writer.close()
+                        
                 # Get weights used in the last request
                 used_weights = client.response.headers["x-mbx-used-weight-1m"]
                 
@@ -100,7 +103,7 @@ def update_aggTrades(
                 trades = []
             
     except Exception as e:
-        print(f"An error occurred: {e}")
+        warnings.warn(f"An error occurred: {e}", RuntimeWarning)
 
     finally:
         if trades:

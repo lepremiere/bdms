@@ -98,12 +98,12 @@ from bdms.update import update_aggTrades
 update_aggTrades(
     api_key="your_api_key",
     api_secret="your_api_secret",
+    symbol="BTCUSDT",
     path="../BTCUSDT.parquet",
     write_interval=1000             # Write trades to file every 1000 trades
 )
 ```
 - Supports updating _aggTrades_ and single files only.
-- The filename must contain the symbol.
 
 ---
 
