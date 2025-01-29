@@ -174,7 +174,8 @@ def populate_database(
             if provided_start_date < _start_date:
                 warnings.warn(
                     f"({trading_type}: {market_data_type}) only available "
-                    f"from {_start_date}. Setting start date to {_start_date}."
+                    f"from {_start_date}. Setting start date to {_start_date}.",
+                    RuntimeWarning
                 )
                 start_date = str(_start_date)
         else:
@@ -252,7 +253,7 @@ def populate_database(
     
     # Check if there are any jobs
     if not jobs:
-        warnings.warn("No valid combinations found.")
+        print("No valid combinations found.")
         return
     
     # Shuffle jobs to avoid processing large files in sequence, potentially

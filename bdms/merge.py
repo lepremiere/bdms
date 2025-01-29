@@ -69,7 +69,7 @@ def concatenate_dfs_on_disk(paths: List[str], output_file: str) -> None:
             else:
                 raise ValueError(f"Invalid storage format {storage_format}.")
     except Exception as e:
-        warnings.warn(f"Error: {e}. Removing {output_file}.")
+        warnings.warn(f"Error: {e}. Removing {output_file}.", RuntimeWarning)
         os.remove(output_file)  
     finally:
         gc.collect()
@@ -220,7 +220,8 @@ def merge_database(
                     warnings.warn(
                         f"Monthly and daily data is not continuous. Skipping"
                         f" {symbol}, {trading_type}, {market_data_type}."
-                        f" Populate the database again from {target_date}."
+                        f" Populate the database again from {target_date}.",
+                        RuntimeWarning
                     )
                     continue
             
@@ -232,7 +233,7 @@ def merge_database(
             if not paths:
                 warnings.warn(
                     f"No files found for {symbol}, {trading_type}, "
-                    f"{market_data_type}."
+                    f"{market_data_type}.", RuntimeWarning
                 )
                 continue
             
@@ -242,7 +243,7 @@ def merge_database(
      
     # Check if there are any jobs
     if not jobs:
-        warnings.warn("No valid combinations found.")
+        print("No valid combinations found.")
         return
 
     # Run the jobs in parallel
