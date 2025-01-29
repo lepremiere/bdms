@@ -175,15 +175,11 @@ def load_csv_from_zip(path: str) -> pl.DataFrame:
             
         # Open the CSV file in the archive and load it into a DataFrame
         with zip_ref.open(csv_file) as file:
-            # # Polars unfortunately assigns empty columns as strings instead of 
-            # # float64 like Pandas. The "metrics" data has a lot of empty columns
-            # # which are originally float64. To work around this, we first load
-            # # the data into a Pandas DataFrame and then convert it to a Polars.
-            if "metrics" in csv_file:
-                df = pd.read_csv(file, header=0 if has_header else None)
-                df = pl.DataFrame(df)
-            else:
-                df = pl.read_csv(file, has_header=has_header)
+            df = pl.read_csv(
+                file, 
+                has_header=has_header,
+                null_values=["", "null", "NULL", "None", "none", "NaN", "nan"],
+            )
         
     # Close the ZIP file
     zip_ref.close()

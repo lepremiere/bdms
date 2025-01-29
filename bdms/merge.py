@@ -3,8 +3,6 @@ from typing import List
 import os
 import gc
 import warnings
-import polars as pl
-import pandas as pd
 import pyarrow.parquet as pq
 from itertools import product
 from multiprocessing import Pool, cpu_count

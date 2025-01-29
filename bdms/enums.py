@@ -22,12 +22,12 @@ TIME_PERIODS = ["daily", "monthly"]
 TRADING_TYPES = ["spot", "um", "cm"]
 SPOT_TYPES = ["trades", "aggTrades", "klines"]
 DAILY_FUTURES_TYPES = [
-    "aggTrades", "bookDepth", "bookTicker", "indexPriceKlines",
+    "aggTrades", "bookDepth", "indexPriceKlines",
     "klines", "liquidationSnapshot", "markPriceKlines", "metrics",
     "premiumIndexKlines", "trades"
 ]
 MONTHLY_FUTURES_TYPES = [
-    "aggTrades", "bookTicker", "fundingRate", "indexPriceKlines",
+    "aggTrades", "fundingRate", "indexPriceKlines",
     "klines", "markPriceKlines", "premiumIndexKlines", "trades"
 ]
 FUTURE_TYPES = DAILY_FUTURES_TYPES + MONTHLY_FUTURES_TYPES
@@ -99,17 +99,8 @@ KLINE_COLUMNS = [
 BOOKDEPTH_COLUMNS = [
     "timestamp", "percentage", "depth", "notional"
 ]
-BOOKTICKER_COLUMNS = [
-    "update_id", "best_bid_price", "best_bid_qty", "best_ask_price",
-    "best_ask_qty", "transaction_time", "event_time"
-]
 FUNDINGRATE_COLUMNS = [
     "calc_time", "funding_interval_hours", "last_funding_rate"
-]
-LIQUIDATION_COLUMNS = [
-    "time", "side", "order_type", "time_in_force", "original_quantity",
-    "price", "average_price", "order_status", "last_fill_quantity", 
-    "accumulated_fill_quantity"
 ]
 METRICS_COLUMNS = [
     "create_time", "symbol", "sum_open_interest", "sum_open_interest_value",
@@ -125,13 +116,55 @@ SPOT_COLUMNS_MAP = {
 FUTURES_COLUMNS_MAP = {
     "aggTrades": AGGTRADES_COLUMNS[:-1],
     "bookDepth": BOOKDEPTH_COLUMNS,
-    "bookTicker": BOOKTICKER_COLUMNS,
     "fundingRate": FUNDINGRATE_COLUMNS,
     "indexPriceKlines": KLINE_COLUMNS,
     "klines": KLINE_COLUMNS,
-    "liquidationSnapshot": LIQUIDATION_COLUMNS,
     "markPriceKlines": KLINE_COLUMNS,
     "metrics": METRICS_COLUMNS,
     "premiumIndexKlines": KLINE_COLUMNS,
     "trades": TRADES_COLUMNS
+}
+
+# Dtype mapping
+DTYPE_MAP = {
+    "agg_id": int,
+    "price": float,
+    "quantity": float,
+    "first_trade_id": int,
+    "last_trade_id": int,
+    "timestamp": int,
+    "is_buyer_maker": bool,
+    "is_best_match": bool,
+    
+    "id": int,
+    "quote_quantity": float,
+    "open_time": int,
+    "open": float,
+    "high": float,
+    "low": float,
+    "close": float,
+    "volume": float,
+    "close_time": int,
+    "quote_volume": float,
+    "count": int,
+    "taker_buy_volume": float,
+    "taker_buy_quote_volume": float,
+    "ignore": int,
+    
+    "percentage": float,
+    "depth": int,
+    "notional": float,
+    
+    "calc_time": int,
+    "funding_interval_hours": int,
+    "last_funding_rate": float,
+    
+    "create_time": str,
+    "symbol": str,
+    "sum_open_interest": float,
+    "sum_open_interest_value": float,
+    "count_toptrader_long_short_ratio": float,
+    "sum_toptrader_long_short_ratio": float,
+    "count_long_short_ratio": float,
+    "sum_taker_long_short_vol_ratio": float
 }

@@ -15,7 +15,8 @@ from multiprocessing import Pool, cpu_count
 
 from bdms.enums import (
     TYPES_MAP, START_DATE_MAP, END_DATE, INTERVALS_MAP,
-    BASE_URL, SPOT_COLUMNS_MAP, FUTURES_COLUMNS_MAP
+    BASE_URL, SPOT_COLUMNS_MAP, FUTURES_COLUMNS_MAP,
+    DTYPE_MAP,
 )
 from bdms.utils import (
     get_base_path, get_file_basename, get_valid_combinations,
@@ -47,6 +48,11 @@ def download_and_process_file(
         # an ignore column with not all values set to 0. 
         if "ignore" in df.columns:
             df = df.with_columns(pl.lit(0).alias("ignore"))
+            
+        # Set the data types
+        df = df.with_columns(
+            [(df[col].cast(DTYPE_MAP[col])) for col in df.columns]
+        )
         
           # Write the file to the desired format
         if storage_format == "parquet":
