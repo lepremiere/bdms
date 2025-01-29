@@ -2,6 +2,7 @@ from typing import List, Tuple, Dict
 
 import zipfile
 import polars as pl
+import pandas as pd
 import urllib.request
 import warnings
 from itertools import product
@@ -121,8 +122,7 @@ def download_file(url: str, path: str) -> bool:
     """
     try:
         dl_file = urllib.request.urlopen(url)
-        length = int(dl_file.getheader('content-length'))
-        blocksize = max(4096, length//100)
+        blocksize = 1024 * 1024
             
         with open(path, 'wb') as out_file:
             while True:
@@ -171,12 +171,19 @@ def load_csv_from_zip(path: str) -> pl.DataFrame:
         # Determine if CSV file has header by looking at first row
         with zip_ref.open(csv_file) as file:
             first_row = pl.read_csv(file, has_header=False, n_rows=1)
-            has_header = first_row.dtypes[0] == pl.datatypes.String
+            has_header = all([d == pl.String for d in first_row.dtypes])
             
         # Open the CSV file in the archive and load it into a DataFrame
         with zip_ref.open(csv_file) as file:
-            # Load the CSV file into a DataFrame
-            df = pl.read_csv(file, has_header=has_header)
+            # # Polars unfortunately assigns empty columns as strings instead of 
+            # # float64 like Pandas. The "metrics" data has a lot of empty columns
+            # # which are originally float64. To work around this, we first load
+            # # the data into a Pandas DataFrame and then convert it to a Polars.
+            if "metrics" in csv_file:
+                df = pd.read_csv(file, header=0 if has_header else None)
+                df = pl.DataFrame(df)
+            else:
+                df = pl.read_csv(file, has_header=has_header)
         
     # Close the ZIP file
     zip_ref.close()

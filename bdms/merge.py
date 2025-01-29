@@ -3,6 +3,8 @@ from typing import List
 import os
 import gc
 import warnings
+import polars as pl
+import pandas as pd
 import pyarrow.parquet as pq
 from itertools import product
 from multiprocessing import Pool, cpu_count
@@ -15,7 +17,7 @@ from bdms.utils import (
     check_date_range,
     intersect_dates,
     load_df_with_unkwon_format, 
-    get_valid_combinations
+    get_valid_combinations,
 )
 
 def concatenate_dfs_on_disk(paths: List[str], output_file: str) -> None:
@@ -44,31 +46,35 @@ def concatenate_dfs_on_disk(paths: List[str], output_file: str) -> None:
     storage_format = output_file.split(".")[-1].lower()
     assert storage_format in ["csv", "parquet"], \
         "Invalid output format. Choose from csv, parquet."
-        
-    with open(output_file, mode="wb") as f:
-        if storage_format == "csv":
-            first_file = True
-            for path in paths:             
-                df = load_df_with_unkwon_format(path)                
-                df.write_csv(f, include_header=first_file)
-                first_file = False
-                
-        elif storage_format == "parquet":
-            # Load the first file and get the schema
-            arrow_table = load_df_with_unkwon_format(paths[0]).to_arrow() 
-            writer = pq.ParquetWriter(
-                f, arrow_table.schema, compression="zstd", 
-                use_dictionary=False, compression_level=5,
-            )
-            with writer:
-                writer.write_table(arrow_table)
-                for path in paths[1:]:
-                    arrow_table = load_df_with_unkwon_format(path).to_arrow()
-                    writer.write_table(arrow_table)   
-        else:
-            raise ValueError(f"Invalid storage format {storage_format}.")
-    f.close()
-    gc.collect()
+    try:
+        with open(output_file, mode="wb") as f:
+            if storage_format == "csv":
+                first_file = True
+                for path in paths:             
+                    df = load_df_with_unkwon_format(path)                
+                    df.write_csv(f, include_header=first_file)
+                    first_file = False
+                    
+            elif storage_format == "parquet":
+                # Load the first file and get the schema
+                table = load_df_with_unkwon_format(paths[0]).to_arrow()
+                writer = pq.ParquetWriter(
+                    f, table.schema , compression="zstd", 
+                    use_dictionary=False, compression_level=5,
+                )
+                with writer:
+                    writer.write_table(table)
+                    for path in paths[1:]:
+                        table = load_df_with_unkwon_format(path).to_arrow()
+                        writer.write_table(table)  
+                writer.close() 
+            else:
+                raise ValueError(f"Invalid storage format {storage_format}.")
+    except Exception as e:
+        warnings.warn(f"Error: {e}. Removing {output_file}.")
+        os.remove(output_file)  
+    finally:
+        gc.collect()
             
 
 def merge_database(
@@ -110,6 +116,8 @@ def merge_database(
         Default is zip.
     output_format: str
         Storage format for the merged data (csv, parquet). Default is parquet.
+    check_continuous: bool
+        Check if the monthly and daily data is continuous. Default is True.
     n_jobs: int
         Number of parallel jobs to run. Default is the number of CPUs
         
@@ -240,8 +248,9 @@ def merge_database(
         return
 
     # Run the jobs in parallel
-    pbar = tqdm(total=len(symbols), desc="Merging data")
+    pbar = tqdm(total=len(jobs), desc="Merging data")
     n_jobs = min(cpu_count(), len(jobs)) if n_jobs == -1 else n_jobs
+
     pool = Pool(n_jobs, maxtasksperchild=1)
     for job in jobs:
         pool.apply_async(

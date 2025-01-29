@@ -1,8 +1,10 @@
 from typing import List
 
+import io
 import os
 import gc
 import json
+import zipfile
 import warnings
 import urllib.request
 import urllib.error
@@ -29,31 +31,41 @@ def download_and_process_file(
         cols: List[str],
     ) -> None:
     """Downloads the zip file and processes it to the desired format."""
-    storage_format = file_path.split(".")[-1].lower()
-    
-    # Download the file 
-    success = download_file(url, zip_path)
-    if not success: 
-        return
-    
-    # Store data in different format if not zip via Thread
-    if storage_format != "zip":
+    try:
+        storage_format = file_path.split(".")[-1].lower()
+        
+        # Download the file 
+        success = download_file(url, zip_path)
+        if not success: 
+            return
+        
         # Extract the zip file and get the csv file
         df = load_csv_from_zip(zip_path)
         df.columns = cols
         
-        # Set all ignore values to 0 for compatibility
+        # Set all ignore values to 0 for compatibility. Older files have
+        # an ignore column with not all values set to 0. 
         if "ignore" in df.columns:
             df = df.with_columns(pl.lit(0).alias("ignore"))
-
+        
+          # Write the file to the desired format
         if storage_format == "parquet":
             df.write_parquet(file_path)
-        else:
+            os.remove(zip_path)
+        elif storage_format == "csv":
             df.write_csv(file_path)
-            
-        # Delete the zip file and the df
-        os.remove(zip_path)
-        del df
+            os.remove(zip_path)
+        elif storage_format == "zip":
+            buffer = io.StringIO()
+            df.write_csv(buffer)
+            with zipfile.ZipFile(zip_path, "w") as z:
+                z.writestr(
+                    f"{os.path.basename(file_path)}".replace(".zip", ".csv"),
+                    buffer.getvalue()
+                )               
+    except Exception as e:
+        warnings.warn(f"Error processing {url}: {e}")
+    finally:
         gc.collect()
 
 
@@ -77,9 +89,11 @@ def populate_database(
     
     Note: The available dates are not easy to determine, so it will be tried to
     download the data for the specified date range. If the data is not available
-    for the specified date range, the function will return a warning.
+    for the specified date range, the function will give a warning.
     
-    WARNING: Depending on selected data you might need a lot of disk space.
+    WARNING: Depending on selected data you might need a lot of disk space, RAM,
+    and time. Especially trades are heavy in terms of data. If resources are 
+    limited, consider limiting the number of parallel jobs.
      
     Parameters:
     ----------
@@ -105,9 +119,7 @@ def populate_database(
         End date for the data. Default is the current date. Exclusive.
     storage_format: str
         Storage format for the data (csv, parquet, zip). Default is zip.
-        If zip, the data is stored as received from the database.
-        If csv or parquet, the native zip file is extracted and stored in the
-        selected format. Note: Parquet has the lowest file size.
+        Note: Parquet has the lowest file size.
     n_jobs: int
         Number of parallel jobs to run. Default is -1, which uses all available
         CPUs.
