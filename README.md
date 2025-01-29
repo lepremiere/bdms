@@ -9,12 +9,11 @@ The Binance Data Management System (BDMS) is a Python-based framework designed t
 
 ## 🚀 Features
 
-- **Automated Data Population**: Download historical data from [Binance Vision](https://data.binance.vision/) and create your own database.
-- **Data Merging**: Combine daily and monthly data to create a unified dataset.
+- **Automated Data Population**: Download historical data from [Binance](https://data.binance.vision/) and create your own database.
+- **Data Merging**: Combine the natively distributed data to create a unified dataset.
 - **Data Format Conversion**: Seamlessly convert data between CSV, Parquet, and ZIP formats.
 - **Real-Time Data Updates**: Update datasets using Binance's API to include the latest trades.
 - **Scalable Processing**: Utilize multi-threading for efficient parallel processing.
-- **Flexible Integration**: Designed with modularity in mind to integrate easily into existing systems.
 
 ---
 
@@ -40,19 +39,26 @@ The Binance Data Management System (BDMS) is a Python-based framework designed t
 ### 1. Data Population
 Download historical data directly from Binance:
 ```python
-from bdms.populate import populate_database
+import warnings
+from bdms import populate_database
 
-populate_database(
-    root_dir="data/",
-    symbols=["BTCUSDT", "ETHUSDT"],
-    trading_types=["spot"],
-    market_data_types=["klines", "trades"],
-    intervals=["1h"],
-    start_date="2023-01-01",
-    end_date="2023-12-31",
-    storage_format="parquet",
-)
+warnings.filterwarnings("ignore", category=UserWarning) 
+if __name__ == "__main__":
+    populate_database(
+        root_dir="C:/Binance",
+        symbols=["BTCUSDT", "ETHUSDT"],
+        trading_types=["spot"],
+        market_data_types=["klines", "aggTrades"],
+        intervals=["1h"],
+        start_date="2023-01-01",
+        end_date="2023-12-31",
+        storage_format="parquet",
+    )
 ```
+- Does not support _bookTicker_ and _liquidationSnapshot_ data types since they are no longer supported by Binance. 
+- Automatically determines all valid combinations of the types and intervals provided.
+- Sets the _start_date_ automatically to earliest available date if not provided or specified to early. _end_date_ is set to the current date if not provided.
+- Tries to download all valid combinations for a given date range. If a combination is not available, it throws a _UserWarning_ and skips the file. Therefore, suppressing _UserWarning_ is recommended. 
 
 ### 2. Format Conversion
 Convert files from one format to another:
@@ -60,20 +66,21 @@ Convert files from one format to another:
 from bdms.conversion import convert_files
 
 convert_files(
-    folder="data/",
+    folder="../Binance",
     input_format="csv",
     output_format="parquet",
-    walk=True,
+    walk=True,                # Recursively search for files
+    delete_original=False,    # Keep original files after conversion
 )
 ```
 
 ### 3. Merging Data
-Merge daily and monthly data:
+Merge all available data for a given combination into a single file:
 ```python
 from bdms.merge import merge_data
 
 merge_data(
-    root_dir="data/",
+    root_dir="../Binance",
     symbols=["BTCUSDT"],
     trading_types=["spot"],
     market_data_types=["klines"],
@@ -81,6 +88,7 @@ merge_data(
     output_format="parquet",
 )
 ```
+- Automatically determines all valid combinations of the types and intervals provided.
 
 ### 4. Real-Time Updates
 Update aggregate trade data:
@@ -90,9 +98,12 @@ from bdms.update import update_aggTrades
 update_aggTrades(
     api_key="your_api_key",
     api_secret="your_api_secret",
-    path="data/BTCUSDT.parquet",
+    path="../BTCUSDT.parquet",
+    write_interval=1000             # Write trades to file every 1000 trades
 )
 ```
+- Supports updating _aggTrades_ and single files only.
+- The filename must contain the symbol.
 
 ---
 
@@ -107,30 +118,17 @@ update_aggTrades(
 
 ---
 
-
-## 🔮 Upcoming Features
-
-- **Advanced Analytics**: Add built-in functions for technical analysis and trend prediction.
-- **Backtesting Module**: Integrate a backtesting module for algorithmic trading strategies.
-- **Visualization Tools**: Provide graphical representations of market trends and patterns.
-- **Improved Error Handling**: Enhance error detection and reporting across all modules.
-- **Additional Data Sources**: Extend support for data from other exchanges beyond Binance.
-- **Cloud Integration**: Add support for cloud storage and processing options.
-
-Feel free to suggest additional features via [issues](https://github.com/lepremiere/bdms/issues)!
-
----
-
 ## 🖇 Dependencies
 
 - Python 3.8+
 - Required libraries:
-  - `pandas`
-  - `polars`
-  - `pyarrow`
-  - `tqdm`
-  - `multiprocessing`
-  - `binance`
+    - `numpy`
+    - `pandas`
+    - `polars`
+    - `pyarrow`
+    - `tqdm`
+    - `multiprocessing`
+    - `python-binance`
 
 Install all dependencies using the provided `requirements.txt`.
 
@@ -170,7 +168,7 @@ This project is licensed under the MIT License. See the [LICENSE](LICENSE) file 
 
 ## ⭐ Acknowledgements
 
-- Data provided by [Binance Vision](https://data.binance.vision/).
-- Libraries: `polars`, `pyarrow`, `tqdm`, `binance`.
+- Data provided by [Binance](https://data.binance.vision/).
+- This repository is based on the code of the Binance-Team @ [binance-public-data](https://github.com/binance/binance-public-data). Big thanks to them!
 
 If you found this project useful, please consider giving it a star 🌟!
