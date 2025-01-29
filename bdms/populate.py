@@ -9,6 +9,7 @@ import warnings
 import urllib.request
 import urllib.error
 import polars as pl
+import numpy as np
 from tqdm import tqdm
 from datetime import datetime
 from multiprocessing import Pool, cpu_count
@@ -49,6 +50,16 @@ def download_and_process_file(
         if "ignore" in df.columns:
             df = df.with_columns(pl.lit(0).alias("ignore"))
             
+        # Convert timestamp to unix if it is string. Only BookDepth files have
+        # been observed to have the column "timestamp" as datetime. All other
+        # files have the column "timestamp" in unix format.
+        if "timestamp" in df.columns and df["timestamp"].dtype == pl.String:
+            df = df.with_columns(
+                pl.col("timestamp").str.strptime(
+                    pl.Datetime("ms"), "%Y-%m-%d %H:%M:%S"
+                ).cast(pl.Int64)
+            )
+            
         # Set the data types
         df = df.with_columns(
             [(df[col].cast(DTYPE_MAP[col])) for col in df.columns]
@@ -70,7 +81,7 @@ def download_and_process_file(
                     buffer.getvalue()
                 )               
     except Exception as e:
-        warnings.warn(f"Error processing {url}: {e}")
+        warnings.warn(f"Error processing {url}: {e}", category=RuntimeWarning)
     finally:
         gc.collect()
 
@@ -243,6 +254,10 @@ def populate_database(
     if not jobs:
         warnings.warn("No valid combinations found.")
         return
+    
+    # Shuffle jobs to avoid processing large files in sequence, potentially
+    # running out of memory.
+    np.random.shuffle(jobs)
     
     # Run the jobs in parallel
     pbar = tqdm(total=len(jobs), desc="Downloading data", smoothing=0)

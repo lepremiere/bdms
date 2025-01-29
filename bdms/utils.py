@@ -132,10 +132,15 @@ def download_file(url: str, path: str) -> bool:
                 out_file.write(buffer)
         out_file.close()
         
-    except urllib.error.HTTPError:
-        warnings.warn("File not found: {}".format(url))
-        return False
-    
+    except Exception as e:
+        if isinstance(e, urllib.error.HTTPError):
+            warnings.warn("File not found: {}".format(url))
+            return False
+        else:
+            warnings.warn(
+                f"Error downloading file: {e}", category=RuntimeWarning
+            )
+            return False
     return True
 
 
