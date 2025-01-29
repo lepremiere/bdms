@@ -13,7 +13,7 @@ The Binance Data Management System (BDMS) is a Python-based framework designed t
 - **Data Merging**: Combine the natively distributed data to create a unified dataset.
 - **Data Format Conversion**: Seamlessly convert data between CSV, Parquet, and ZIP formats.
 - **Real-Time Data Updates**: Update datasets using Binance's API to include the latest trades.
-- **Scalable Processing**: Utilize multi-threading for efficient parallel processing.
+- **Scalable Processing**: Utilize multi-threading and on-disk operations for efficient parallel processing.
 
 ---
 
