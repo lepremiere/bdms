@@ -59,7 +59,7 @@ def concatenate_dfs_on_disk(paths: List[str], output_file: str) -> None:
                 table = load_df_with_unkwon_format(paths[0]).to_arrow()
                 writer = pq.ParquetWriter(
                     f, table.schema , compression="zstd", 
-                    use_dictionary=False, compression_level=5,
+                    use_dictionary=False, 
                 )
                 with writer:
                     writer.write_table(table)
@@ -233,7 +233,6 @@ def merge_database(
             monthly_dates, daily_dates = dates["monthly"], dates["daily"]
             monthly_files = np.array(monthly_files)[monthly_mask].tolist()
             daily_files = np.array(daily_files)[daily_mask].tolist()
-         
 
             # Check if the first daily date is immediately after the last 
             # monthly date. If not, warn the user and skip this combination
