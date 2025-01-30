@@ -59,13 +59,12 @@ def concatenate_dfs_on_disk(paths: List[str], output_file: str) -> None:
                 table = load_df_with_unkwon_format(paths[0]).to_arrow()
                 writer = pq.ParquetWriter(
                     f, table.schema , compression="zstd", 
-                    use_dictionary=False, 
+                    use_dictionary=False, write_statistics=False
                 )
-                with writer:
-                    writer.write_table(table)
-                    for path in paths[1:]:
-                        table = load_df_with_unkwon_format(path).to_arrow()
-                        writer.write_table(table)  
+                writer.write_table(table)
+                for path in paths[1:]:
+                    table = load_df_with_unkwon_format(path).to_arrow()
+                    writer.write_table(table)  
                 writer.close() 
             else:
                 raise ValueError(f"Invalid storage format {storage_format}.")
