@@ -86,6 +86,7 @@ def merge_database(
         output_format: str = "parquet",
         start_date: str = None,
         end_date: str = None,
+        output_dir: str = None,
         check_continuous: bool = True,
         n_jobs: int = -1
     ) -> None:
@@ -180,14 +181,6 @@ def merge_database(
             path_daily = os.path.join(root_dir, base_path_daily)
             path_monthly = os.path.join(root_dir, base_path_monthly)
             
-            # Get the save path and create the directory
-            base_save_path = base_path_monthly.replace("data/", "merged/")
-            base_save_path = base_save_path.replace("monthly/", "")
-            save_path = os.path.join(
-                root_dir, base_save_path.replace(f"{symbol}/", "")
-            )
-            os.makedirs(save_path, exist_ok=True)
-            
             # Get all the files in the directory and according dates
             monthly_files, daily_files = [], []
             monthly_dates, daily_dates = [], []
@@ -258,7 +251,7 @@ def merge_database(
                         RuntimeWarning
                     )
                     continue
-            
+                            
             # Create jobs
             paths = [os.path.join(path_monthly, f) for f in monthly_files]
             paths += [os.path.join(path_daily, f) for f in daily_files]
@@ -270,6 +263,18 @@ def merge_database(
                     f"{market_data_type}.", RuntimeWarning
                 )
                 continue
+            
+            # Get the save path and create the directory
+            if output_dir is None:
+                base_save_path = base_path_monthly.replace("data/", "merged/")
+            else:
+                base_save_path = base_path_monthly.replace("data/", "")
+            base_save_path = base_save_path.replace("monthly/", "")
+            save_path = os.path.join(
+                root_dir if output_dir is None else output_dir, 
+                base_save_path.replace(f"{symbol}/", "")
+            )
+            os.makedirs(save_path, exist_ok=True)
             
             # Create job
             output_file = os.path.join(save_path, f"{symbol}.{output_format}")
