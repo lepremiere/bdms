@@ -3,6 +3,7 @@ from typing import List
 import os
 import gc
 import warnings
+import numpy as np
 import pyarrow.parquet as pq
 from itertools import product
 from multiprocessing import Pool, cpu_count
@@ -83,6 +84,8 @@ def merge_database(
         intervals: List[str] = None,
         data_base_format: str = "zip",
         output_format: str = "parquet",
+        start_date: str = None,
+        end_date: str = None,
         check_continuous: bool = True,
         n_jobs: int = -1
     ) -> None:
@@ -114,6 +117,10 @@ def merge_database(
         Default is zip.
     output_format: str
         Storage format for the merged data (csv, parquet). Default is parquet.
+    start_date: str
+        Start date for the data to merge. Default is 1970-01-01.
+    end_date: str
+        End date for the data to merge. Default is today.
     check_continuous: bool
         Check if the monthly and daily data is continuous. Default is True.
     n_jobs: int
@@ -131,6 +138,16 @@ def merge_database(
         "Invalid storage format. Choose from zip, csv, parquet."
     assert output_format in ["csv", "parquet"], \
         "Invalid output format. Choose from csv, parquet."
+        
+    # Convert start and end dates to datetime objects
+    if start_date is not None:
+        start_date = datetime.strptime(start_date, "%Y-%m-%d").date()
+    else:
+        start_date = datetime.strptime("1970-01-01", "%Y-%m-%d").date()
+    if end_date is not None:
+        end_date = datetime.strptime(end_date, "%Y-%m-%d").date()
+    else:
+        end_date = datetime.today().date()
     
     # Get all the combinations 
     combinations = get_valid_combinations(trading_types, market_data_types)
@@ -176,37 +193,54 @@ def merge_database(
             monthly_dates, daily_dates = [], []
             has_monthly, has_daily = False, False
             
+            # Get the monthly files
             if os.path.exists(path_monthly):
-                # Get the monthly files
-                all_monthly_files = os.listdir(path_monthly)
-                monthly_files = [
-                    f for f in all_monthly_files if f.endswith(data_base_format)
-                ]
-                # Get available dates from the files and check the date 
-                # range if needed
-                monthly_dates = extract_dates_from_filenames(monthly_files)
+                all_files = os.listdir(path_monthly)
+                all_dates = extract_dates_from_filenames(all_files)
+                
+                for d, f in zip(all_dates, all_files):
+                    # Check if the date is within the specified range
+                    is_valid_date = start_date <= d <= end_date
+                    # Check if the file is in the specified format
+                    if f.endswith(data_base_format) and is_valid_date:
+                        monthly_files.append(f)
+                        monthly_dates.append(d)
+                
                 if check_continuous:
                     check_date_range(monthly_dates, "monthly")
                     
                 has_monthly = True if monthly_files else False
-                    
+            
+            # Get the daily files      
             if os.path.exists(path_daily):
-                # Get the daily files
-                all_daily_files = os.listdir(path_daily)
-                daily_files = [
-                    f for f in all_daily_files if f.endswith(data_base_format)
-                ]
-                # Get available dates from the files and check the date 
-                # range if needed
-                daily_dates = extract_dates_from_filenames(daily_files)
+                all_files = os.listdir(path_daily)
+                all_dates = extract_dates_from_filenames(all_files)
+                
+                for d, f in zip(all_dates, all_files):
+                    # Check if the date is within the specified range
+                    is_valid_date = start_date <= d <= end_date
+                    # Check if the file is in the specified format
+                    if f.endswith(data_base_format) and is_valid_date:
+                        daily_files.append(f)
+                        daily_dates.append(d)
+                
                 if check_continuous:
                     check_date_range(daily_dates, "daily")
                     
                 has_daily = True if daily_files else False
                 
-            # Intersect the dates and filter for continuous dates
+            # Intersect the dates, so that months and days do not overlap
             dates = intersect_dates(monthly_dates, daily_dates)
+            
+            # Get mask for the dates
+            daily_mask = np.isin(daily_dates, dates["daily"])
+            monthly_mask = np.isin(monthly_dates, dates["monthly"])
+            
+            # Filter the dates and files
             monthly_dates, daily_dates = dates["monthly"], dates["daily"]
+            monthly_files = np.array(monthly_files)[monthly_mask].tolist()
+            daily_files = np.array(daily_files)[daily_mask].tolist()
+         
 
             # Check if the first daily date is immediately after the last 
             # monthly date. If not, warn the user and skip this combination
