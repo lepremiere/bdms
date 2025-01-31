@@ -59,6 +59,17 @@ def download_and_process_file(
                     pl.Datetime("ms"), "%Y-%m-%d %H:%M:%S"
                 ).cast(pl.Int64)
             )
+        
+        # Convert all time related columns to microseconds, for forward 
+        # compatibility. Binance switched from milliseconds to microseconds
+        # in 2025.
+        for col in df.columns:
+            if "time" in col:
+                df = df.with_columns(
+                    # Converts milliseconds to microseconds but leaves 
+                    # microseconds as they are.
+                    pl.col(col) * (1 + (pl.col(col) % 10**6 != 0) * 999)
+                )
             
         # Set the data types
         df = df.with_columns(
