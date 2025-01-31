@@ -50,20 +50,30 @@ def download_and_process_file(
         if "ignore" in df.columns:
             df = df.with_columns(pl.lit(0).alias("ignore"))
             
-        # Convert timestamp to unix if it is string. Only BookDepth files have
-        # been observed to have the column "timestamp" as datetime. All other
-        # files have the column "timestamp" in unix format.
-        if "timestamp" in df.columns and df["timestamp"].dtype == pl.String:
-            df = df.with_columns(
-                pl.col("timestamp").str.strptime(
-                    pl.Datetime("ms"), "%Y-%m-%d %H:%M:%S"
-                ).cast(pl.Int64)
-            )
-            
+        # Convert timestamp to unix if it in datetime format
+        for col in df.columns:
+            if "time" in col and df[col].dtype == pl.String:
+                df = df.with_columns(
+                    pl.col(col).str.strptime(
+                        pl.Datetime, "%Y-%m-%d %H:%M:%S"
+                    ).cast(pl.Int64)
+                )
+                    
         # Set the data types
         df = df.with_columns(
             [(df[col].cast(DTYPE_MAP[col])) for col in df.columns]
         )
+        
+        # Convert all time related columns to microseconds, for forward 
+        # compatibility. Binance switched from milliseconds to microseconds
+        # in 2025.
+        for col in df.columns:
+            if "time" in col:
+                df = df.with_columns(
+                    # Converts milliseconds to microseconds but leaves 
+                    # microseconds as they are.
+                    pl.col(col) * (1 + ((pl.col(col) % 10**6) != 0) * 999)
+                )
         
           # Write the file to the desired format
         if storage_format == "parquet":

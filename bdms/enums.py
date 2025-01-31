@@ -159,7 +159,7 @@ DTYPE_MAP = {
     "funding_interval_hours": int,
     "last_funding_rate": float,
     
-    "create_time": str,
+    "create_time": int,
     "symbol": str,
     "sum_open_interest": float,
     "sum_open_interest_value": float,
