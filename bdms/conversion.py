@@ -1,9 +1,11 @@
 import os
+import gc
 import warnings 
+import numpy as np
 from tqdm import tqdm
 from multiprocessing import Pool, cpu_count
-
-from bdms.utils import load_df_with_unkwon_format
+import polars as pl
+from bdms.utils import load_csv_from_zip
    
     
 def convert_single_file(
@@ -26,23 +28,37 @@ def convert_single_file(
     """
     input_format = input_file.split(".")[-1].lower()
     output_file = input_file.replace(input_format, output_format)
-    
+    assert os.path.isfile(input_file), f"Invalid file {input_file}."
+    assert input_format in ["zip", "csv", "parquet"], \
+        f"Invalid input format {input_format}."
+    assert output_format in ["csv", "parquet"], \
+        f"Invalid output format {output_format}."
+        
     # Catch any errors that occur during the conversion, eg empty files
     try:
-        df = load_df_with_unkwon_format(input_file)
+        if input_format == "zip":
+            df = load_csv_from_zip(input_file).lazy()
+        elif input_format == "csv":
+            df = pl.scan_csv(input_file)
+        else:
+            df = pl.scan_parquet(input_file)
     except Exception as e:
         warnings.warn(f"\nError loading file {input_file}. {e}")
     
     # Write the dataframe to the output file
     if output_format == "csv":
-        df.write_csv(output_file)
+        df.sink_csv(output_file)
     else:
-        df.write_parquet(output_file)
+        df.sink_parquet(output_file)
     
     # Delete the original file
     if delete_original:
         os.remove(input_file)
 
+    # Clear the dataframe from memory
+    del df
+    gc.collect()
+    
 
 def convert_files(
         folder: str, 
@@ -90,9 +106,14 @@ def convert_files(
     # Check if any files were found
     if not paths:
         warnings.warn(f"No files found in {root}.")
-             
+    
+    # Shuffle the paths to avoid processing the files in order, avoiding
+    # processing large files in sequence.
+    np.random.shuffle(paths)
+    
     # Convert the files
-    pool = Pool(min(cpu_count(), len(paths)) if n_jobs == -1 else n_jobs)
+    n_jobs = min(cpu_count(), len(paths)) if n_jobs == -1 else n_jobs
+    pool = Pool(n_jobs, maxtasksperchild=1)
     pbar = tqdm(total=len(paths), desc="Converting Files", position=0)
     for path in paths:
         input_file = os.path.join(root, path)
