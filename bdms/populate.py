@@ -70,20 +70,11 @@ def download_and_process_file(
         for col in df.columns:
             if "time" in col:
                 df = df.with_columns(
-                    # Converts milliseconds to microseconds but leaves 
-                    # microseconds as they are.
-                    pl.col(col) * (1 + ((pl.col(col) % 10**6) != 0) * 999)
-                )
-        
-        # Convert all time related columns to microseconds, for forward 
-        # compatibility. Binance switched from milliseconds to microseconds
-        # in 2025.
-        for col in df.columns:
-            if "time" in col:
-                df = df.with_columns(
-                    # Converts milliseconds to microseconds but leaves 
-                    # microseconds as they are.
-                    pl.col(col) * (1 + ((pl.col(col) % 10**6) != 0) * 999)
+                    pl.when(pl.col(col) < 1e14)
+                        .then(pl.col(col) * 1000)
+                        .otherwise(pl.col(col))
+                        .alias(col)
+                        .cast(pl.Int64)
                 )
         
           # Write the file to the desired format
