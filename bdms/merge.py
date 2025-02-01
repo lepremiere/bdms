@@ -200,8 +200,6 @@ def merge_database(
                 
                 if check_continuous:
                     check_date_range(monthly_dates, "monthly")
-                    
-                has_monthly = True if monthly_files else False
             
             # Get the daily files      
             if os.path.exists(path_daily):
@@ -218,8 +216,6 @@ def merge_database(
                 
                 if check_continuous:
                     check_date_range(daily_dates, "daily")
-                    
-                has_daily = True if daily_files else False
                 
             # Intersect the dates, so that months and days do not overlap
             dates = intersect_dates(monthly_dates, daily_dates)
@@ -232,6 +228,10 @@ def merge_database(
             monthly_dates, daily_dates = dates["monthly"], dates["daily"]
             monthly_files = np.array(monthly_files)[monthly_mask].tolist()
             daily_files = np.array(daily_files)[daily_mask].tolist()
+            
+            # Check if there are any files
+            has_daily = len(daily_files) > 0
+            has_monthly = len(monthly_files) > 0
 
             # Check if the first daily date is immediately after the last 
             # monthly date. If not, warn the user and skip this combination
