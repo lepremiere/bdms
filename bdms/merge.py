@@ -239,7 +239,7 @@ def merge_database(
                 last_month = monthly_dates[-1]
                 target_date = last_month.replace(
                     month=(last_month.month+1)%12 or 12, 
-                    year=last_month.year+(last_month.month+1)%12
+                    year=last_month.year+(last_month.month+1)//12
                 ) 
                 if daily_dates[0] != target_date:
                     warnings.warn(
