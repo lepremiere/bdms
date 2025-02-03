@@ -33,6 +33,8 @@ def convert_single_file(
         f"Invalid input format {input_format}."
     assert output_format in ["csv", "parquet"], \
         f"Invalid output format {output_format}."
+    assert input_format != output_format, \
+        f"Input and output formats are the same {input_format}."
         
     # Catch any errors that occur during the conversion, eg empty files
     try:
