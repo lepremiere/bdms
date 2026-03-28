@@ -184,6 +184,7 @@ def load_csv_from_zip(path: str) -> pl.DataFrame:
                 file, 
                 has_header=has_header,
                 null_values=["", "null", "NULL", "None", "none", "NaN", "nan"],
+                ignore_errors=True
             )
         
     # Close the ZIP file
